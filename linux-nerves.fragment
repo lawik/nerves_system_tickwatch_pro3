@@ -96,3 +96,7 @@ CONFIG_DEBUG_INFO_NONE=y
 # bootloader framebuffer.
 CONFIG_DRM_MSM_DSI_12NM_PHY=y
 CONFIG_DRM_PANEL_MOBVOI_ROVER=m
+
+# Audio: the speaker amp's I2S link ends in the pass-through S/PDIF codec
+# until there is a driver for the amp (see patch 0016).
+CONFIG_SND_SOC_SPDIF=m
