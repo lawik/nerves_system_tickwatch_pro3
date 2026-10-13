@@ -1,4 +1,4 @@
-From 786b0c8a4493f406b96df2f3e3ac054bcff25975 Mon Sep 17 00:00:00 2001
+From e3b936e7b83287eec0faa2614ea118a527e4e265 Mon Sep 17 00:00:00 2001
 From: Lars Wikman <lars@underjord.io>
 Date: Tue, 13 Oct 2026 17:04:25 +0200
 Subject: [PATCH] ASoC: codecs: add a driver for the Awinic AW882xx (0x1852)
@@ -8,16 +8,17 @@ which none of the mainline Awinic drivers know. Android runs it from a
 register file (aw882xx_spk_reg.bin on the vendor partition) and then
 treats it as a plain I2S amplifier: power it up and wait for the PLL to
 lock once the I2S clocks run, then unmute; mute and power down when the
-stream stops. Do the same.
+stream stops. Do the same, waiting for the lock in a work item since the
+clocks may only start after the codec is unmuted.
 
 The firmware name can be overridden with the firmware-name property.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- sound/soc/codecs/Kconfig   |   9 ++
+ sound/soc/codecs/Kconfig   |   9 +
  sound/soc/codecs/Makefile  |   2 +
- sound/soc/codecs/aw882xx.c | 315 +++++++++++++++++++++++++++++++++++++
- 3 files changed, 326 insertions(+)
+ sound/soc/codecs/aw882xx.c | 327 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 338 insertions(+)
  create mode 100644 sound/soc/codecs/aw882xx.c
 
 diff --git a/sound/soc/codecs/Kconfig b/sound/soc/codecs/Kconfig
@@ -62,10 +63,10 @@ index 172861d..65bfb2f 100644
  obj-$(CONFIG_SND_SOC_AW88395_LIB) += snd-soc-aw88395-lib.o
 diff --git a/sound/soc/codecs/aw882xx.c b/sound/soc/codecs/aw882xx.c
 new file mode 100644
-index 0000000..c1809e9
+index 0000000..49376d6
 --- /dev/null
 +++ b/sound/soc/codecs/aw882xx.c
-@@ -0,0 +1,315 @@
+@@ -0,0 +1,327 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Awinic AW882xx (chip ID 0x1852) smart amplifier, run as a plain I2S
@@ -78,6 +79,7 @@ index 0000000..c1809e9
 +
 +#include <linux/bitfield.h>
 +#include <linux/delay.h>
++#include <linux/devm-helpers.h>
 +#include <linux/firmware.h>
 +#include <linux/gpio/consumer.h>
 +#include <linux/i2c.h>
@@ -85,6 +87,7 @@ index 0000000..c1809e9
 +#include <linux/regmap.h>
 +#include <linux/regulator/consumer.h>
 +#include <linux/unaligned.h>
++#include <linux/workqueue.h>
 +#include <sound/pcm_params.h>
 +#include <sound/soc.h>
 +
@@ -120,6 +123,7 @@ index 0000000..c1809e9
 +	const char *fw_name;
 +	u8 *cfg;
 +	size_t cfg_len;
++	struct delayed_work start_work;
 +};
 +
 +static const struct regmap_config aw882xx_regmap = {
@@ -163,26 +167,30 @@ index 0000000..c1809e9
 +	return regmap_write(aw->regmap, AW882XX_VTMCTRL3, (1 << 13) * icalk / vcalk);
 +}
 +
-+static int aw882xx_start(struct aw882xx *aw)
++/*
++ * The PLL locks to the I2S bit clock, which may only start after the codec
++ * is unmuted, so power up and wait for the lock off the stream's path.
++ */
++static void aw882xx_start(struct work_struct *work)
 +{
++	struct aw882xx *aw = container_of(work, struct aw882xx, start_work.work);
 +	unsigned int sysst = 0;
 +	int i;
 +
 +	regmap_update_bits(aw->regmap, AW882XX_SYSCTRL, AW882XX_PWDN, 0);
 +
-+	for (i = 0; i < 10; i++) {
++	for (i = 0; i < 100; i++) {
 +		regmap_read(aw->regmap, AW882XX_SYSST, &sysst);
 +		if ((sysst & AW882XX_SYSST_MASK) == AW882XX_SYSST_OK) {
 +			regmap_update_bits(aw->regmap, AW882XX_SYSCTRL2, AW882XX_HMUTE, 0);
-+			return 0;
++			dev_dbg(aw->dev, "started after %d ms\n", i * 5);
++			return;
 +		}
-+		usleep_range(2000, 3000);
++		usleep_range(5000, 6000);
 +	}
 +
 +	dev_err(aw->dev, "did not start, sysst 0x%04x\n", sysst);
 +	regmap_update_bits(aw->regmap, AW882XX_SYSCTRL, AW882XX_PWDN, AW882XX_PWDN);
-+
-+	return -EIO;
 +}
 +
 +static void aw882xx_stop(struct aw882xx *aw)
@@ -255,11 +263,13 @@ index 0000000..c1809e9
 +	struct aw882xx *aw = snd_soc_component_get_drvdata(dai->component);
 +
 +	if (mute) {
++		cancel_delayed_work_sync(&aw->start_work);
 +		aw882xx_stop(aw);
-+		return 0;
++	} else {
++		schedule_delayed_work(&aw->start_work, 0);
 +	}
 +
-+	return aw882xx_start(aw);
++	return 0;
 +}
 +
 +static const struct snd_soc_dai_ops aw882xx_dai_ops = {
@@ -315,6 +325,9 @@ index 0000000..c1809e9
 +
 +	aw->dev = dev;
 +	i2c_set_clientdata(i2c, aw);
++	ret = devm_delayed_work_autocancel(dev, &aw->start_work, aw882xx_start);
++	if (ret)
++		return ret;
 +
 +	aw->regmap = devm_regmap_init_i2c(i2c, &aw882xx_regmap);
 +	if (IS_ERR(aw->regmap))
