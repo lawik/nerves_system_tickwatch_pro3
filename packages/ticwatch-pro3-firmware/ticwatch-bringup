@@ -155,6 +155,15 @@ for n in $GPU_FW; do
 	fi
 done
 
+# The speaker amp's register file. Its driver asks for it by this name.
+if amp=$(find_file "aw882xx_spk_reg.bin"); then
+	log "speaker amp config: $amp"
+	ln -sf "$amp" "$FWDIR/aw882xx_spk_reg.bin"
+	found_any=1
+else
+	log "no aw882xx_spk_reg.bin found; no speaker"
+fi
+
 # The ADSP runs the audio (QDSP6). Its signed image, adsp.mdt and its
 # adsp.bNN segments, is on the stock `modem` partition (FAT, NON-HLOS),
 # which nothing else mounts. qcom_q6v5_pas asks for adsp.mdt once
