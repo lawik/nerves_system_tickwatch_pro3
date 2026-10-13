@@ -1,4 +1,4 @@
-From b7e685b337823aaac96dbd517c55d76e1d939051 Mon Sep 17 00:00:00 2001
+From 4c40493175609ff7828edf3b475f6beeb0f1c68a Mon Sep 17 00:00:00 2001
 From: Lars Wikman <lars@underjord.io>
 Date: Tue, 13 Oct 2026 17:04:39 +0200
 Subject: [PATCH] arm64: dts: qcom: rover: enable audio
@@ -15,14 +15,14 @@ segments, more than msm8937's 17 MiB region, so give it 24 MiB.
 
 Assisted-by: Claude:claude-opus-5-5
 ---
- .../boot/dts/qcom/sdm429w-mobvoi-rover.dts    | 148 +++++++++++++++++-
- 1 file changed, 146 insertions(+), 2 deletions(-)
+ .../boot/dts/qcom/sdm429w-mobvoi-rover.dts    | 152 +++++++++++++++++-
+ 1 file changed, 150 insertions(+), 2 deletions(-)
 
 diff --git a/arch/arm64/boot/dts/qcom/sdm429w-mobvoi-rover.dts b/arch/arm64/boot/dts/qcom/sdm429w-mobvoi-rover.dts
-index 2cdcabe..ebcc5a0 100644
+index 2cdcabe..d3e0b0d 100644
 --- a/arch/arm64/boot/dts/qcom/sdm429w-mobvoi-rover.dts
 +++ b/arch/arm64/boot/dts/qcom/sdm429w-mobvoi-rover.dts
-@@ -127,6 +127,30 @@
+@@ -127,6 +127,34 @@
  	};
  };
  
@@ -33,6 +33,10 @@ index 2cdcabe..ebcc5a0 100644
 +/* The ADSP image spans 21 MiB once its uninitialised segments count. */
 +&adsp_mem {
 +	size = <0x0 0x1800000>;
++	status = "okay";
++};
++
++&apr {
 +	status = "okay";
 +};
 +
@@ -53,7 +57,7 @@ index 2cdcabe..ebcc5a0 100644
  &blsp1_i2c4 {
  	status = "okay";
  
-@@ -234,6 +258,10 @@
+@@ -234,6 +262,10 @@
  	};
  };
  
@@ -64,7 +68,7 @@ index 2cdcabe..ebcc5a0 100644
  &mdss {
  	status = "okay";
  };
-@@ -307,6 +335,13 @@
+@@ -307,6 +339,13 @@
  	status = "okay";
  };
  
@@ -78,7 +82,7 @@ index 2cdcabe..ebcc5a0 100644
  &rpm_requests {
  	regulators-0 {
  		compatible = "qcom,rpm-pm660-regulators";
-@@ -402,9 +437,10 @@
+@@ -402,9 +441,10 @@
  			regulator-allow-set-load;
  		};
  
@@ -91,7 +95,7 @@ index 2cdcabe..ebcc5a0 100644
  			regulator-enable-ramp-delay = <250>;
  			regulator-ramp-delay = <0>;
  		};
-@@ -502,6 +538,70 @@
+@@ -502,6 +542,70 @@
  	clock-frequency = <32768>;
  };
  
@@ -162,7 +166,7 @@ index 2cdcabe..ebcc5a0 100644
  &spmi_bus {
  	pmic@0 {
  		pm660_fg: fuel-gauge@4000 {
-@@ -541,6 +641,50 @@
+@@ -541,6 +645,50 @@
  		bias-disable;
  	};
  
