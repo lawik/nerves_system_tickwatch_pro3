@@ -168,8 +168,15 @@ fi
 # adsp.bNN segments, is on the stock `modem` partition (FAT, NON-HLOS),
 # which nothing else mounts. qcom_q6v5_pas asks for adsp.mdt once
 # nerves_uevent loads it, after this script.
+#
+# /root/.no-adsp leaves the ADSP unbooted, for measuring power without it:
+# once booted it stays awake and holds XO on.
 MODEM_DIR=/mnt/modem
 for b in /sys/class/block/*; do
+	if [ -e /root/.no-adsp ]; then
+		log "/root/.no-adsp present; not staging the ADSP, no audio"
+		break
+	fi
 	grep -qx "PARTNAME=modem" "$b/uevent" 2>/dev/null || continue
 	if mount -t vfat -o ro,nodev,noexec,nosuid "/dev/${b##*/}" "$MODEM_DIR"; then
 		for fw in "$MODEM_DIR"/image/adsp.*; do
