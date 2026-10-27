@@ -1,0 +1,132 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Nerves TicWatch Pro 3 maintainers <noreply@example.com>
+Date: Tue, 27 Oct 2026 00:00:00 +0000
+Subject: [PATCH] arm64: dts: qcom: rover: enable the speaker
+
+The speaker amplifier sits on BLSP1 I2C2 and takes I2S from LPASS
+quinary MI2S, which the downstream rover-audio.dtsi routes to the
+pri_mi2s pins gpio85-88. There is no analog codec on PM660, so the
+whole playback path is MultiMedia1 -> QUIN_MI2S_RX -> amplifier.
+---
+--- a/arch/arm64/boot/dts/qcom/sdm429w-mobvoi-rover.dts
++++ b/arch/arm64/boot/dts/qcom/sdm429w-mobvoi-rover.dts
+@@ -127,6 +127,33 @@
+ 	};
+ };
+ 
++&adsp {
++	status = "okay";
++};
++
++&adsp_mem {
++	status = "okay";
++};
++
++&apr {
++	status = "okay";
++};
++
++&blsp1_i2c2 {
++	status = "okay";
++
++	speaker_amp: audio-codec@34 {
++		compatible = "awinic,aw882xx";
++		reg = <0x34>;
++		reset-gpios = <&tlmm 92 GPIO_ACTIVE_LOW>;
++		dvdd-supply = <&pm660_l11>;
++		pinctrl-0 = <&speaker_amp_default>;
++		pinctrl-names = "default";
++		#sound-dai-cells = <0>;
++		sound-name-prefix = "Speaker";
++	};
++};
++
+ &blsp1_i2c4 {
+ 	status = "okay";
+ 
+@@ -473,6 +500,39 @@
+ 	clock-frequency = <32768>;
+ };
+ 
++&sound {
++	model = "mobvoi-rover";
++	pinctrl-0 = <&quin_mi2s_default>;
++	pinctrl-1 = <&quin_mi2s_sleep>;
++	pinctrl-names = "default", "sleep";
++	audio-routing = "MM_DL1", "MultiMedia1 Playback";
++	status = "okay";
++
++	mm1-dai-link {
++		link-name = "MultiMedia1";
++
++		cpu {
++			sound-dai = <&q6asmdai MSM_FRONTEND_DAI_MULTIMEDIA1>;
++		};
++	};
++
++	quinary-mi2s-dai-link {
++		link-name = "Quinary MI2S";
++
++		cpu {
++			sound-dai = <&q6afedai QUINARY_MI2S_RX>;
++		};
++
++		platform {
++			sound-dai = <&q6routing>;
++		};
++
++		codec {
++			sound-dai = <&speaker_amp>;
++		};
++	};
++};
++
+ &spmi_bus {
+ 	pmic@0 {
+ 		pm660_fg: fuel-gauge@4000 {
+@@ -512,6 +572,45 @@
+ 		bias-disable;
+ 	};
+ 
++	quin_mi2s_default: quin-mi2s-default-state {
++		data-pins {
++			pins = "gpio85", "gpio86", "gpio88";
++			function = "pri_mi2s";
++			drive-strength = <8>;
++			bias-disable;
++		};
++
++		ws-pins {
++			pins = "gpio87";
++			function = "pri_mi2s_ws";
++			drive-strength = <8>;
++			bias-disable;
++		};
++	};
++
++	quin_mi2s_sleep: quin-mi2s-sleep-state {
++		data-pins {
++			pins = "gpio85", "gpio86", "gpio88";
++			function = "pri_mi2s";
++			drive-strength = <2>;
++			bias-pull-down;
++		};
++
++		ws-pins {
++			pins = "gpio87";
++			function = "pri_mi2s_ws";
++			drive-strength = <2>;
++			bias-pull-down;
++		};
++	};
++
++	speaker_amp_default: speaker-amp-default-state {
++		pins = "gpio92", "gpio93";
++		function = "gpio";
++		drive-strength = <2>;
++		bias-disable;
++	};
++
+ 	wifi_reg_on: wifi-reg-on-state {
+ 		pins = "gpio72";
+ 		function = "gpio";
