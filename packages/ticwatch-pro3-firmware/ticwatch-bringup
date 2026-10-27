@@ -139,6 +139,54 @@ else
 	log "no Bluetooth .hcd found; the controller will run unpatched firmware"
 fi
 
+# Audio. The ADSP runs Qualcomm's stock audio firmware, which ships on the
+# FAT-formatted NON-HLOS partition alongside the modem's. The speaker
+# amplifier's board register file, when present, is on /vendor.
+MODEM_PARTNAMES="modem modem_a apnhlos"
+MODEM_MNT=/mnt/modem
+
+find_partition() {
+	for uevent in /sys/class/block/*/uevent; do
+		partname=$(sed -n 's/^PARTNAME=//p' "$uevent")
+		for want in $1; do
+			if [ "$partname" = "$want" ]; then
+				echo "/dev/$(sed -n 's/^DEVNAME=//p' "$uevent")"
+				return 0
+			fi
+		done
+	done
+	return 1
+}
+
+if modem=$(find_partition "$MODEM_PARTNAMES") &&
+	mount -t vfat -o ro,nodev,noexec,nosuid,shortname=lower "$modem" "$MODEM_MNT"; then
+	found_adsp=0
+	for f in "$MODEM_MNT"/image/adsp.* "$MODEM_MNT"/adsp.*; do
+		[ -f "$f" ] || continue
+		ln -sf "$f" "$FWDIR/${f##*/}"
+		found_adsp=1
+	done
+	# A single-file image carries every segment, so the PIL loader can be
+	# pointed at it under the split image's name.
+	if [ ! -e "$FWDIR/adsp.mdt" ] && [ -e "$FWDIR/adsp.mbn" ]; then
+		ln -sf adsp.mbn "$FWDIR/adsp.mdt"
+	fi
+	if [ "$found_adsp" = "1" ]; then
+		log "ADSP firmware: $modem"
+		found_any=1
+	else
+		log "no ADSP firmware on $modem; there will be no audio"
+	fi
+else
+	log "could not mount a modem partition ($MODEM_PARTNAMES); there will be no audio"
+fi
+
+if amp=$(find_file "aw882xx_spk_reg.bin"); then
+	log "speaker amplifier registers: $amp"
+	ln -sf "$amp" "$FWDIR/aw882xx_spk_reg.bin"
+	found_any=1
+fi
+
 if [ "$found_any" = "1" ]; then
 	if [ -w "$PARAM" ]; then
 		printf "%s" "$FWDIR" > "$PARAM"
@@ -160,16 +208,35 @@ fi
 #                            NVRAM staged above
 #   hci_uart  Bluetooth    — pulls in btbcm, which wants the .hcd
 #   nanohub   sensor hub   — stock hub firmware; never flashes it
+#   qcom_q6v5_pas  ADSP    — boots the audio DSP from the firmware staged
+#                            above; the sound card follows once it is up
 #
 # bcm4775-bbd is intentionally not loaded here. Its transport powers the GPS
 # receiver, but it is not useful until an open userspace location engine exists.
-for mod in zinitix brcmfmac hci_uart nanohub; do
+for mod in zinitix brcmfmac hci_uart nanohub qcom_q6v5_pas; do
 	if modprobe "$mod" 2>/dev/null; then
 		log "loaded $mod"
 	else
 		log "could not load $mod"
 	fi
 done
+
+# The only playback route on this watch is MultiMedia1 (PCM device 0) into
+# the quinary MI2S port that feeds the speaker amplifier. The card appears
+# only after the ADSP has booted, so set the route from the background
+# rather than delay Erlang for it.
+(
+	i=0
+	while [ "$i" -lt 60 ]; do
+		if amixer -q -c 0 cset name='QUIN_MI2S_RX Audio Mixer MultiMedia1' 1 2>/dev/null; then
+			log "speaker route enabled"
+			exit 0
+		fi
+		sleep 1
+		i=$((i + 1))
+	done
+	log "no sound card after 60 s; speaker route not set"
+) >/dev/null 2>&1 &
 
 # SDIO probes asynchronously. Do not delay Erlang waiting for wlan0:
 # VintageNet handles the interface appearing later. Applications should set

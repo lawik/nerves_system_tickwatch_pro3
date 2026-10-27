@@ -122,6 +122,13 @@ BR2_PACKAGE_BLUEZ5_UTILS=y
 BR2_PACKAGE_BLUEZ5_UTILS_CLIENT=y
 BR2_PACKAGE_BLUEZ5_UTILS_TOOLS=y
 
+# Audio — the speaker, through the ADSP and the AW882xx amplifier.
+# amixer sets the playback route at boot; aplay and speaker-test play to it.
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
+
 # Host helpers. genext2fs builds the ext2 boot image that lk2nd reads;
 # see scripts/create-boot-img.sh.
 BR2_PACKAGE_HOST_DOSFSTOOLS=y
